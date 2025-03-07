@@ -136,6 +136,9 @@ def activity_heatmap(selected_user,df):
     user_heatmap = df.pivot_table(index='day', columns='period', values='message', aggfunc='count').fillna(0)
 
     return user_heatmap
+def generate_wordcloud(text, color):
+    wordcloud = WordCloud(width=400, height=300, background_color=color, colormap="viridis").generate(text)
+    return wordcloud
 
 
 
