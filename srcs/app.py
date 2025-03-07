@@ -23,7 +23,7 @@ st.sidebar.title("Whatsapp Chat Analyzer")
 uploaded_file = st.sidebar.file_uploader("Upload your chat file (.txt)", type="txt")
 if uploaded_file is not None:
     raw_data = uploaded_file.read().decode("utf-8")
-    df = preprocessor.preprocess(raw_data)
+    df ,topics = preprocessor.preprocess(raw_data)
 
     # Sidebar filters
     st.sidebar.header("🔍 Filters")
@@ -274,30 +274,30 @@ if uploaded_file is not None:
             neutral_text = " ".join(df[df['sentiment'] == 'neutral']['message'])
             negative_text = " ".join(df[df['sentiment'] == 'negative']['message'])
 
-            # # Create three columns for side-by-side display
-            # col1, col2, col3 = st.columns(3)
+            st.title("Topic Analysis")
+            if topics:
+                fig = helper.plot_topics(topics)
+                st.pyplot(fig)
+            else:
+                st.warning("No topics found for visualization.")
+            # Topic Analysis
+            st.title("Area of Focus: Topic Analysis")
 
-            # # Display Positive Word Cloud
-            # with col1:
-            #     st.subheader("Positive Word Cloud")
-            #     fig, ax = plt.subplots()
-            #     ax.imshow(helper.generate_wordcloud(positive_text, "white"), interpolation='bilinear')
-            #     ax.axis("off")
-            #     st.pyplot(fig)
+            # Plot Topic Distribution
+            st.header("Topic Distribution")
+            fig = helper.plot_topic_distribution(df)
+            st.pyplot(fig)
 
-            # # Display Neutral Word Cloud
-            # with col2:
-            #     st.subheader("Neutral Word Cloud")
-            #     fig, ax = plt.subplots()
-            #     ax.imshow(helper.generate_wordcloud(neutral_text, "white"), interpolation='bilinear')
-            #     ax.axis("off")
-            #     st.pyplot(fig)
+            # Display Top Words for Each Topic
+            st.header("Top Words for Each Topic")
+            for idx, topic in enumerate(topics):
+                st.subheader(f"Topic {idx}")
+                st.write(", ".join(topic))  # Display top 10 words for the topic
 
-            # # Display Negative Word Cloud
-            # with col3:
-            #     st.subheader("Negative Word Cloud")
-            #     fig, ax = plt.subplots()
-            #     ax.imshow(helper.generate_wordcloud(negative_text, "black"), interpolation='bilinear')
-            #     ax.axis("off")
-            #     st.pyplot(fig) 
-
+            # Display Sample Messages for Each Topic
+            st.header("Sample Messages for Each Topic")
+            for topic_id in df['topic'].unique():
+                st.subheader(f"Topic {topic_id}")
+                sample_messages = df[df['topic'] == topic_id]['message'].sample(5).tolist()
+                for msg in sample_messages:
+                    st.write(f"- {msg}")
