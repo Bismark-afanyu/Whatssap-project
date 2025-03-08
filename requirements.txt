@@ -16,3 +16,4 @@ sentencepiece==0.2.0
 protobuf==5.28.0
 spacy
 scikit-learn
+plotly

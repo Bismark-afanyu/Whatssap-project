@@ -5,6 +5,9 @@ from collections import Counter
 import emoji
 import matplotlib.pyplot as plt
 import seaborn as sns
+from collections import Counter
+import plotly.express as px
+
 
 extract = URLExtract()
 
@@ -22,11 +25,11 @@ def fetch_stats(selected_user,df):
         words.extend(message.split())
 
     # fetch number of media messages
-    num_media_messages = df[df['message'] == '<Media omitted>\n'].shape[0]
+    num_media_messages = df[df['unfiltered_messages'] == '<media omitted>\n'].shape[0]
 
     # fetch number of links shared
     links = []
-    for message in df['message']:
+    for message in df['unfiltered_messages']:
         links.extend(extract.find_urls(message))
 
     return num_messages,len(words),num_media_messages,len(links)
@@ -84,7 +87,7 @@ def emoji_helper(selected_user, df):
         df = df[df['user'] == selected_user]
 
     emojis = []
-    for message in df['message']:
+    for message in df['unfiltered_messages']:
         emojis.extend([c for c in message if c in emoji.EMOJI_DATA])
 
     emoji_df = pd.DataFrame(Counter(emojis).most_common(len(Counter(emojis))))
@@ -163,7 +166,7 @@ def plot_topic_distribution(df):
     """
     Plots the distribution of topics in the chat data.
     """
-    topic_counts = df['topic'].value_counts().sort_index()
+    topic_counts = df['topic'].value_counts().sort_index()  
     fig, ax = plt.subplots()
     sns.barplot(x=topic_counts.index, y=topic_counts.values, ax=ax, palette="viridis")
     ax.set_title("Topic Distribution")
@@ -171,15 +174,78 @@ def plot_topic_distribution(df):
     ax.set_ylabel("Number of Messages")
     return fig
 
+def most_frequent_keywords(messages, top_n=10):
+    """
+    Extracts the most frequent keywords from a list of messages.
+    """
+    words = [word for msg in messages for word in msg.split()]
+    word_freq = Counter(words)
+    return word_freq.most_common(top_n)
+def plot_topic_distribution_over_time(topic_distribution):
+    """
+    Plots the distribution of topics over time using a line chart.
+    """
+    fig, ax = plt.subplots(figsize=(12, 6))
+    
+    # Plot each topic as a separate line
+    for topic in topic_distribution.columns:
+        ax.plot(topic_distribution.index.to_timestamp(), topic_distribution[topic], label=f"Topic {topic}")
+    
+    ax.set_title("Topic Distribution Over Time")
+    ax.set_xlabel("Time Period")
+    ax.set_ylabel("Number of Messages")
+    ax.legend(title="Topics", bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    return fig
 
+def plot_most_frequent_keywords(keywords):
+    """
+    Plots the most frequent keywords.
+    """
+    words, counts = zip(*keywords)
+    fig, ax = plt.subplots()
+    sns.barplot(x=list(counts), y=list(words), ax=ax, palette="viridis")
+    ax.set_title("Most Frequent Keywords")
+    ax.set_xlabel("Frequency")
+    ax.set_ylabel("Keyword")
+    return fig
+def topic_distribution_over_time(df, time_freq='M'):
+    """
+    Analyzes the distribution of topics over time.
+    """
+    # Group by time interval and topic
+    df['time_period'] = df['date'].dt.to_period(time_freq)
+    topic_distribution = df.groupby(['time_period', 'topic']).size().unstack(fill_value=0)
+    return topic_distribution
 
+def plot_topic_distribution_over_time(topic_distribution):
+    """
+    Plots the distribution of topics over time using a line chart.
+    """
+    fig, ax = plt.subplots(figsize=(12, 6))
+    
+    # Plot each topic as a separate line
+    for topic in topic_distribution.columns:
+        ax.plot(topic_distribution.index.to_timestamp(), topic_distribution[topic], label=f"Topic {topic}")
+    
+    ax.set_title("Topic Distribution Over Time")
+    ax.set_xlabel("Time Period")
+    ax.set_ylabel("Number of Messages")
+    ax.legend(title="Topics", bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    return fig
 
-
-
-
-
-
-
-
-
-
+def plot_topic_distribution_over_time_plotly(topic_distribution):
+    """
+    Plots the distribution of topics over time using Plotly.
+    """
+    topic_distribution = topic_distribution.reset_index()
+    topic_distribution['time_period'] = topic_distribution['time_period'].dt.to_timestamp()
+    topic_distribution = topic_distribution.melt(id_vars='time_period', var_name='topic', value_name='count')
+    
+    fig = px.line(topic_distribution, x='time_period', y='count', color='topic', 
+                  title="Topic Distribution Over Time", labels={'time_period': 'Time Period', 'count': 'Number of Messages'})
+    fig.update_layout(legend_title_text='Topics', xaxis_tickangle=-45)
+    return fig

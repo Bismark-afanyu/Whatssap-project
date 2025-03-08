@@ -29,6 +29,9 @@ def clean_message(text):
     text = text.lower()  # Convert to lowercase
     text = re.sub(r"<media omitted>", "", text)  # Remove media notifications
     text = re.sub(r"this message was deleted", "", text)
+    text = re.sub(r"null", "", text)
+
+    text = re.sub(r"http\S+|www\S+|https\S+", "", text, flags=re.MULTILINE)  # Remove links
     text = re.sub(r"[^a-zA-ZÀ-ÿ0-9\s]", "", text)  # Remove special characters
     return text
 
@@ -70,6 +73,8 @@ def preprocess(data):
     df = df[df["user"] != "group_notification"]
     df.reset_index(drop=True, inplace=True)
 
+    # unfiltered  messages
+    df["unfiltered_messages"] = df["message"]
     # Clean messages
     df["message"] = df["message"].apply(clean_message)
 

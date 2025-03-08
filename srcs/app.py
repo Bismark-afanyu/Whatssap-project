@@ -296,8 +296,40 @@ if uploaded_file is not None:
 
             # Display Sample Messages for Each Topic
             st.header("Sample Messages for Each Topic")
+            
             for topic_id in df['topic'].unique():
                 st.subheader(f"Topic {topic_id}")
-                sample_messages = df[df['topic'] == topic_id]['message'].sample(5).tolist()
-                for msg in sample_messages:
-                    st.write(f"- {msg}")
+
+                # Get messages for the current topic
+                filtered_messages = df[df['topic'] == topic_id]['message']
+
+                # Determine sample size (no more than available messages)
+                sample_size = min(5, len(filtered_messages))
+
+                if sample_size > 0:
+                    sample_messages = filtered_messages.sample(sample_size, replace=False).tolist()
+                    for msg in sample_messages:
+                        st.write(f"- {msg}")
+                else:
+                    st.write("No messages available for this topic.")
+
+            st.title("What They Most Talk About")
+            # Topic Distribution Over Time
+            st.header("Topic Distribution Over Time")
+
+            # Add a dropdown to select time frequency
+            time_freq = st.selectbox("Select Time Frequency", ["Daily", "Weekly", "Monthly"])
+
+            # Map selection to pandas frequency
+            freq_map = {"Daily": "D", "Weekly": "W", "Monthly": "M"}
+            topic_distribution = helper.topic_distribution_over_time(df, time_freq=freq_map[time_freq])
+
+            # Choose between Matplotlib and Plotly
+            use_plotly = st.checkbox("Use Interactive Plot (Plotly)")
+
+            if use_plotly:
+                fig = helper.plot_topic_distribution_over_time_plotly(topic_distribution)
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                fig = helper.plot_topic_distribution_over_time(topic_distribution)
+                st.pyplot(fig)
