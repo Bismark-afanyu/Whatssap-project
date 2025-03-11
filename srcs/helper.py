@@ -249,3 +249,117 @@ def plot_topic_distribution_over_time_plotly(topic_distribution):
                   title="Topic Distribution Over Time", labels={'time_period': 'Time Period', 'count': 'Number of Messages'})
     fig.update_layout(legend_title_text='Topics', xaxis_tickangle=-45)
     return fig
+def plot_clusters(reduced_features, clusters):
+    """
+    Visualize clusters using t-SNE.
+    Args:
+        reduced_features (np.array): 2D array of reduced features.
+        clusters (np.array): Cluster labels.
+    Returns:
+        fig (plt.Figure): Matplotlib figure object.
+    """
+    plt.figure(figsize=(10, 8))
+    sns.scatterplot(
+        x=reduced_features[:, 0],
+        y=reduced_features[:, 1],
+        hue=clusters,
+        palette="viridis",
+        legend="full"
+    )
+    plt.title("Message Clusters (t-SNE Visualization)")
+    plt.xlabel("t-SNE Component 1")
+    plt.ylabel("t-SNE Component 2")
+    plt.tight_layout()
+    return plt.gcf()
+def get_cluster_labels(df, n_clusters):
+    """
+    Generate descriptive labels for each cluster based on top keywords.
+    """
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    import numpy as np
+
+    vectorizer = TfidfVectorizer(max_features=5000, stop_words='english')
+    tfidf_matrix = vectorizer.fit_transform(df['lemmatized_message'])
+
+    cluster_labels = {}
+    for cluster_id in range(n_clusters):
+        cluster_indices = df[df['cluster'] == cluster_id].index
+        if len(cluster_indices) > 0:
+            cluster_tfidf = tfidf_matrix[cluster_indices]
+            top_keywords = np.argsort(cluster_tfidf.sum(axis=0).A1)[-3:][::-1]
+            cluster_labels[cluster_id] = ", ".join(vectorizer.get_feature_names_out()[top_keywords])
+        else:
+            cluster_labels[cluster_id] = "No dominant theme"
+    return cluster_labels
+
+def get_temporal_trends(df):
+    """
+    Analyze temporal trends for each cluster (peak day and time).
+    """
+    temporal_trends = {}
+    for cluster_id in df['cluster'].unique():
+        cluster_data = df[df['cluster'] == cluster_id]
+        if not cluster_data.empty:
+            peak_day = cluster_data['day_of_week'].mode()[0]
+            peak_time = cluster_data['hour'].mode()[0]
+            temporal_trends[cluster_id] = {"peak_day": peak_day, "peak_time": f"{peak_time}:00"}
+    return temporal_trends
+
+def get_user_contributions(df):
+    """
+    Identify top contributors for each cluster.
+    """
+    user_contributions = {}
+    for cluster_id in df['cluster'].unique():
+        cluster_data = df[df['cluster'] == cluster_id]
+        if not cluster_data.empty:
+            top_users = cluster_data['user'].value_counts().head(3).index.tolist()
+            user_contributions[cluster_id] = top_users
+    return user_contributions
+
+def get_sentiment_by_cluster(df):
+    """
+    Analyze sentiment distribution for each cluster.
+    """
+    sentiment_by_cluster = {}
+    for cluster_id in df['cluster'].unique():
+        cluster_data = df[df['cluster'] == cluster_id]
+        if not cluster_data.empty:
+            sentiment_counts = cluster_data['sentiment'].value_counts(normalize=True) * 100
+            sentiment_by_cluster[cluster_id] = {
+                "positive": round(sentiment_counts.get('positive', 0)),
+                "neutral": round(sentiment_counts.get('neutral', 0)),
+                "negative": round(sentiment_counts.get('negative', 0))
+            }
+    return sentiment_by_cluster
+
+def detect_anomalies(df):
+    """
+    Detect anomalies in each cluster (e.g., high link or media share).
+    """
+    anomalies = {}
+    for cluster_id in df['cluster'].unique():
+        cluster_data = df[df['cluster'] == cluster_id]
+        if not cluster_data.empty:
+            link_share = (cluster_data['message'].str.contains('http').mean()) * 100
+            media_share = (cluster_data['message'].str.contains('<media omitted>').mean()) * 100
+            if link_share > 50:
+                anomalies[cluster_id] = f"{round(link_share)}% of messages contain links."
+            elif media_share > 50:
+                anomalies[cluster_id] = f"{round(media_share)}% of messages are media files."
+    return anomalies
+
+def generate_recommendations(df):
+    """
+    Generate actionable recommendations based on cluster insights.
+    """
+    recommendations = []
+    for cluster_id in df['cluster'].unique():
+        cluster_data = df[df['cluster'] == cluster_id]
+        if not cluster_data.empty:
+            sentiment_counts = cluster_data['sentiment'].value_counts(normalize=True) * 100
+            if sentiment_counts.get('negative', 0) > 50:
+                recommendations.append(f"Address negative sentiment in Cluster {cluster_id} by revisiting feedback processes.")
+            if cluster_data['message'].str.contains('http').mean() > 0.5:
+                recommendations.append(f"Pin resources from Cluster {cluster_id} (most-shared links) for easy access.")
+    return recommendations

@@ -2,9 +2,8 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-import preprocessor, helper 
+import preprocessor, helper
 import calendar
-
 
 # Theme customization
 st.set_page_config(page_title="WhatsApp Chat Analyzer", layout="wide")
@@ -23,7 +22,7 @@ st.sidebar.title("Whatsapp Chat Analyzer")
 uploaded_file = st.sidebar.file_uploader("Upload your chat file (.txt)", type="txt")
 if uploaded_file is not None:
     raw_data = uploaded_file.read().decode("utf-8")
-    df ,topics = preprocessor.preprocess(raw_data)
+    df, topics = preprocessor.preprocess(raw_data)
 
     # Sidebar filters
     st.sidebar.header("🔍 Filters")
@@ -34,6 +33,11 @@ if uploaded_file is not None:
     if selected_user != "Overall":
         df = df[df["user"] == selected_user]
 
+    # Clustering Section (Moved to the top)
+    if st.sidebar.checkbox("Show Message Clustering"):
+        st.title("Message Clustering Analysis")
+
+       
     if st.sidebar.button("Show Analysis"):
         # Check if the filtered DataFrame is empty
         if df.empty:
@@ -333,3 +337,70 @@ if uploaded_file is not None:
             else:
                 fig = helper.plot_topic_distribution_over_time(topic_distribution)
                 st.pyplot(fig)
+            # Number of clusters input
+            n_clusters = st.slider("Select Number of Clusters", min_value=2, max_value=10, value=5)
+
+            # Perform clustering
+            df, reduced_features, _ = preprocessor.preprocess_for_clustering(df, n_clusters=n_clusters)
+
+            # Plot clusters
+            st.header("Cluster Visualization")
+            fig = helper.plot_clusters(reduced_features, df['cluster'])
+            st.pyplot(fig)
+
+            # Show insights for each cluster
+            st.header("Insights from Clusters")
+
+            # 1. Dominant Conversation Themes
+            st.subheader("1. Dominant Conversation Themes")
+            cluster_labels = helper.get_cluster_labels(df, n_clusters)  # Function to generate cluster labels
+            for cluster_id, label in cluster_labels.items():
+                st.write(f"**Cluster {cluster_id}**: {label}")
+            st.write("**Why it matters**: Helps users quickly identify the main interests or priorities of the group without reading thousands of messages.")
+
+            # 2. Temporal Topic Trends
+            st.subheader("2. Temporal Topic Trends")
+            temporal_trends = helper.get_temporal_trends(df)  # Function to analyze temporal trends
+            for cluster_id, trend in temporal_trends.items():
+                st.write(f"**Cluster {cluster_id}**: Most messages occur on {trend['peak_day']} at {trend['peak_time']}.")
+            st.write("**Why it matters**: Reveals when specific topics trend, helping users optimize posting times or understand group rhythms.")
+
+            # 3. User-Specific Contributions
+            st.subheader("3. User-Specific Contributions")
+            user_contributions = helper.get_user_contributions(df)  # Function to analyze user contributions
+            for cluster_id, users in user_contributions.items():
+                st.write(f"**Cluster {cluster_id}**: Top contributors are {', '.join(users)}.")
+            st.write("**Why it matters**: Highlights individual roles and expertise within the group, useful for team management or moderation.")
+
+            # 4. Sentiment by Topic
+            st.subheader("4. Sentiment by Topic")
+            sentiment_by_cluster = helper.get_sentiment_by_cluster(df)  # Function to analyze sentiment
+            for cluster_id, sentiment in sentiment_by_cluster.items():
+                st.write(f"**Cluster {cluster_id}**: {sentiment['positive']}% positive, {sentiment['neutral']}% neutral, {sentiment['negative']}% negative.")
+            st.write("**Why it matters**: Flags problem areas or success stories tied to specific topics for targeted action.")
+
+            # 5. Anomaly Detection
+            st.subheader("5. Anomaly Detection")
+            anomalies = helper.detect_anomalies(df)  # Function to detect anomalies
+            for cluster_id, anomaly in anomalies.items():
+                st.write(f"**Cluster {cluster_id}**: {anomaly}.")
+            st.write("**Why it matters**: Identifies unusual patterns like spam, off-topic discussions, or critical resource sharing.")
+
+            # 6. Actionable Recommendations
+            st.subheader("6. Actionable Recommendations")
+            recommendations = helper.generate_recommendations(df)  # Function to generate recommendations
+            for recommendation in recommendations:
+                st.write(f"- {recommendation}")
+
+            # Show sample messages from each cluster
+            st.header("Sample Messages from Each Cluster")
+            for cluster_id in sorted(df['cluster'].unique()):
+                st.subheader(f"Cluster {cluster_id}")
+                cluster_messages = df[df['cluster'] == cluster_id]['message']
+                sample_size = min(3, len(cluster_messages))  # Ensure sample size <= available messages
+                if sample_size > 0:
+                    sample_messages = cluster_messages.sample(sample_size, replace=False).tolist()
+                    for msg in sample_messages:
+                        st.write(f"- {msg}")
+                else:
+                    st.write("No messages available for this cluster.")

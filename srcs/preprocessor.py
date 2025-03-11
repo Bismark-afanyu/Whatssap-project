@@ -7,6 +7,10 @@ from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.decomposition import LatentDirichletAllocation
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 from spacy.lang.fr.stop_words import STOP_WORDS as FRENCH_STOP_WORDS
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.cluster import KMeans
+from sklearn.manifold import TSNE
+import numpy as np
 
 # Load language models
 nlp_fr = spacy.load("fr_core_news_sm")
@@ -34,6 +38,38 @@ def clean_message(text):
     text = re.sub(r"http\S+|www\S+|https\S+", "", text, flags=re.MULTILINE)  # Remove links
     text = re.sub(r"[^a-zA-ZÀ-ÿ0-9\s]", "", text)  # Remove special characters
     return text
+
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.cluster import KMeans
+from sklearn.manifold import TSNE
+import numpy as np
+
+def preprocess_for_clustering(df, n_clusters=5):
+    """
+    Preprocess messages for clustering.
+    Args:
+        df (pd.DataFrame): DataFrame containing the 'lemmatized_message' column.
+        n_clusters (int): Number of clusters to create.
+    Returns:
+        df (pd.DataFrame): DataFrame with added 'cluster' column.
+        cluster_centers (np.array): Cluster centroids.
+    """
+    # Step 1: Vectorize text using TF-IDF
+    vectorizer = TfidfVectorizer(max_features=5000, stop_words='english')
+    tfidf_matrix = vectorizer.fit_transform(df['lemmatized_message'])
+
+    # Step 2: Apply K-Means clustering
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+    clusters = kmeans.fit_predict(tfidf_matrix)
+
+    # Step 3: Add cluster labels to DataFrame
+    df['cluster'] = clusters
+
+    # Step 4: Reduce dimensionality for visualization
+    tsne = TSNE(n_components=2, random_state=42)
+    reduced_features = tsne.fit_transform(tfidf_matrix.toarray())
+
+    return df, reduced_features, kmeans.cluster_centers_
 
 def preprocess(data):
     pattern = r"^(?P<Date>\d{1,2}/\d{1,2}/\d{2,4}),\s+(?P<Time>[\d:]+(?:\S*\s?[AP]M)?)\s+-\s+(?:(?P<Sender>.*?):\s+)?(?P<Message>.*)$"
