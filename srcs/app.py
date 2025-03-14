@@ -17,6 +17,13 @@ st.markdown(
 )
 
 st.title("📊 WhatsApp Chat Sentiment Analysis Dashboard")
+st.subheader('Instructions')
+st.markdown("1. Open the side bar and upload your WhatsApp chat file in.txt format.")
+st.markdown("2. Wait for it to load")
+st.markdown("3. Once the data is loaded, you can customize the analysis by selecting specific users or filtering the data.")
+st.markdown("4. Click on the 'Show Analysis' button to begin the analysis.")
+st.markdown("2. The app will preprocess the data, generate topic modeling results, and display various visualizations.")
+
 st.sidebar.title("Whatsapp Chat Analyzer")
 
 uploaded_file = st.sidebar.file_uploader("Upload your chat file (.txt)", type="txt")
