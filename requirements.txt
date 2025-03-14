@@ -14,9 +14,9 @@ transformers==4.44.2
 torch==2.4.0
 sentencepiece==0.2.0
 protobuf==5.28.0
-spacy
 scikit-learn
 plotly
-spacy
+spacy==3.7.0
+thinc==8.1.0
 https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.0/en_core_web_sm-3.7.0-py3-none-any.whl
 https://github.com/explosion/spacy-models/releases/download/fr_core_news_sm-3.7.0/fr_core_news_sm-3.7.0-py3-none-any.whl
