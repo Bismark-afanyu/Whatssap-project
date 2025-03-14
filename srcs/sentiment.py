@@ -33,6 +33,7 @@ def predict_sentiment(text: str) -> str:
     output = model(**encoded_input)
     index_of_sentiment = output.logits.argmax().item()
     sentiment = config.id2label[index_of_sentiment]
+    
     return sentiment
 
 
