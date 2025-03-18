@@ -1,6 +1,6 @@
 import re
 import pandas as pd
-from sentiment import predict_sentiment
+from sentiment_train import predict_sentiment
 import spacy
 from langdetect import detect, LangDetectException
 from sklearn.feature_extraction.text import CountVectorizer
@@ -109,7 +109,7 @@ def preprocess(data):
     df = df[df["user"] != "group_notification"]
     df.reset_index(drop=True, inplace=True)
 
-    # unfiltered  messages
+   # unfiltered  messages
     df["unfiltered_messages"] = df["message"]
     # Clean messages
     df["message"] = df["message"].apply(clean_message)
@@ -125,6 +125,7 @@ def preprocess(data):
 
     df["lemmatized_message"] = lemmatized_messages
 
+
     # Drop original column
     df.drop(columns=["user_message"], inplace=True)
 
@@ -137,7 +138,8 @@ def preprocess(data):
     df['minute'] = df['date'].dt.minute
 
     # Apply sentiment analysis
-    df['sentiment'] = df["message"].apply(predict_sentiment)
+    half_data = df.head(len(df) // 2)  # Select first half of the dataset
+    df['sentiment'] = df["message"].map(predict_sentiment)
 
     # Filter out rows with null lemmatized_message
     df = df.dropna(subset=['lemmatized_message'])
@@ -160,4 +162,7 @@ def preprocess(data):
     for topic in lda.components_:
         topics.append([vectorizer.get_feature_names_out()[i] for i in topic.argsort()[-10:]])
 
-    return df, topics
+    
+    print(topics)
+    print(type(topics))
+    return df,topic 

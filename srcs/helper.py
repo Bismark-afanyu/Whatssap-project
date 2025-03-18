@@ -145,23 +145,31 @@ def generate_wordcloud(text, color):
     wordcloud = WordCloud(width=400, height=300, background_color=color, colormap="viridis").generate(text)
     return wordcloud
 
-def plot_topics(topics):
-    """
-    Plots a bar chart for the top words in each topic.
-    """
-    fig, axes = plt.subplots(1, len(topics), figsize=(20, 10))
-    if len(topics) == 1:
-        axes = [axes]  # Ensure axes is iterable for single topic
+# def plot_topics(topics):
+#     """
+#     Plots a bar chart for the top words in each topic.
+#     """
+#     if not topics or not isinstance(topics[0], list):
+#         raise ValueError("topics must be a list of lists of words.")
 
-    for idx, topic in enumerate(topics):
-        top_words = topic
-        axes[idx].barh(top_words, range(len(top_words)))
-        axes[idx].set_title(f"Topic {idx}")
-        axes[idx].set_xlabel("Word Importance")
-        axes[idx].set_ylabel("Top Words")
+#     print("Topics received:", topics)  # Debugging
+#     fig, axes = plt.subplots(1, len(topics), figsize=(20, 10))
+#     if len(topics) == 1:
+#         axes = [axes]  # Ensure axes is iterable for single topic
 
-    plt.tight_layout()
-    return fig
+#     for idx, topic in enumerate(topics):
+#         if not isinstance(topic, list):
+#             raise ValueError(f"Topic {idx} is not a list of words.")
+
+#         top_words = topic
+#         print(f"Top words for Topic {idx}: {top_words}")  # Debugging
+#         axes[idx].barh(top_words, range(len(top_words)))
+#         axes[idx].set_title(f"Topic {idx}")
+#         axes[idx].set_xlabel("Word Importance")
+#         axes[idx].set_ylabel("Top Words")
+
+#     plt.tight_layout()
+#     return fig
 def plot_topic_distribution(df):
     """
     Plots the distribution of topics in the chat data.
