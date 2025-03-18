@@ -1,12 +1,24 @@
+import os
 import joblib
 import string
 import re
 import nltk
 from nltk.corpus import stopwords
 
+# Get the directory of the current script
+script_dir = os.path.dirname(__file__)
+
+# Construct paths to the model and vectorizer files
+model_path = os.path.join(script_dir, "naive_bayes_model.pkl")
+vectorizer_path = os.path.join(script_dir, "tfidf_vectorizer.pkl")
+
 # Load saved model and vectorizer
-model = joblib.load("naive_bayes_model.pkl")
-vectorizer = joblib.load("tfidf_vectorizer.pkl")
+try:
+    model = joblib.load(model_path)
+    vectorizer = joblib.load(vectorizer_path)
+except FileNotFoundError as e:
+    print(f"Error: {e}")
+    raise
 
 # Load stopwords
 nltk.download("stopwords")
