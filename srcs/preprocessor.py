@@ -1,6 +1,7 @@
 import re
 import pandas as pd
-from sentiment_train import predict_sentiment
+# from sentiment_train import predict_sentiment
+from sentiment import predict_sentiment_bert
 import spacy
 from langdetect import detect, LangDetectException
 from sklearn.feature_extraction.text import CountVectorizer
@@ -139,7 +140,7 @@ def preprocess(data):
 
     # Apply sentiment analysis
     half_data = df.head(len(df) // 2)  # Select first half of the dataset
-    df['sentiment'] = df["message"].map(predict_sentiment)
+    df['sentiment'] = df["message"].map(predict_sentiment_bert)
 
     # Filter out rows with null lemmatized_message
     df = df.dropna(subset=['lemmatized_message'])
