@@ -1,12 +1,15 @@
 import streamlit as st
+st.set_page_config(page_title="WhatsApp Chat Analyzer", layout="wide")
+
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import preprocessor, helper
-import calendar
+from sentiment import predict_sentiment_batch
+import os
+os.environ["STREAMLIT_SERVER_RUN_ON_SAVE"] = "false"
 
 # Theme customization
-st.set_page_config(page_title="WhatsApp Chat Analyzer", layout="wide")
 st.markdown(
     """
     <style>
@@ -16,396 +19,420 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+# Set seaborn style
+sns.set_theme(style="whitegrid")
+
 st.title("📊 WhatsApp Chat Sentiment Analysis Dashboard")
 st.subheader('Instructions')
-st.markdown("1. Open the side bar and upload your WhatsApp chat file in .txt format.")
-st.markdown("2. Wait for it to load")
-st.markdown("3. Once the data is loaded, you can customize the analysis by selecting specific users or filtering the data.")
-st.markdown("4. Click on the 'Show Analysis' button to update the analysis with your selected filters.")
+st.markdown("1. Open the sidebar and upload your WhatsApp chat file in .txt format.")
+st.markdown("2. Wait for the initial processing (minimal delay).")
+st.markdown("3. Customize the analysis by selecting users or filters.")
+st.markdown("4. Click 'Show Analysis' for detailed results.")
 
 st.sidebar.title("Whatsapp Chat Analyzer")
-
 uploaded_file = st.sidebar.file_uploader("Upload your chat file (.txt)", type="txt")
+
+@st.cache_data
+def load_and_preprocess(file_content):
+    return preprocessor.preprocess(file_content)
+
 if uploaded_file is not None:
     raw_data = uploaded_file.read().decode("utf-8")
-    df, topics = preprocessor.preprocess(raw_data)
+    with st.spinner("Loading chat data..."):
+        df, _ = load_and_preprocess(raw_data)
+    st.session_state.df = df
 
-    # Sidebar filters
     st.sidebar.header("🔍 Filters")
     user_list = ["Overall"] + sorted(df["user"].unique().tolist())
     selected_user = st.sidebar.selectbox("Select User", user_list)
 
-    # Filter data based on selected user
     df_filtered = df if selected_user == "Overall" else df[df["user"] == selected_user]
 
-    # Clustering Section
-    if st.sidebar.checkbox("Show Message Clustering"):
-        st.title("Message Clustering Analysis")
-
-    # Show Analysis button
     if st.sidebar.button("Show Analysis"):
         if df_filtered.empty:
             st.warning(f"No data found for user: {selected_user}")
         else:
-            # Stats Area
-            num_messages, words, num_media_messages, num_links = helper.fetch_stats(selected_user, df_filtered)
-            st.title("Top Statistics")
-            col1, col2, col3, col4 = st.columns(4)
+            with st.spinner("Analyzing..."):
+                if 'sentiment' not in df_filtered.columns:
+                    try:
+                        print("Starting sentiment analysis...")
+                        # Get messages as clean strings
+                        message_list = df_filtered["message"].astype(str).tolist()
+                        message_list = [msg for msg in message_list if msg.strip()]
+                        
+                        print(f"Processing {len(message_list)} messages")
+                        print(f"Sample messages: {message_list[:5]}")
+                        
+                        # Directly call the sentiment analysis function
+                        df_filtered['sentiment'] = predict_sentiment_batch(message_list)
+                        print("Sentiment analysis completed successfully")
+                        
+                    except Exception as e:
+                        st.error(f"Sentiment analysis failed: {str(e)}")
+                        print(f"Full error: {str(e)}")
+                    
+                    st.session_state.df_filtered = df_filtered
+                else:
+                    st.session_state.df_filtered = df_filtered
 
-            with col1:
-                st.header("Total Messages")
-                st.title(num_messages)
-            with col2:
-                st.header("Total Words")
-                st.title(words)
-            with col3:
-                st.header("Media Shared")
-                st.title(num_media_messages)
-            with col4:
-                st.header("Links Shared")
-                st.title(num_links)
+                # Display statistics and visualizations
+                num_messages, words, num_media, num_links = helper.fetch_stats(selected_user, df_filtered)
+                st.title("Top Statistics")
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.header("Total Messages")
+                    st.title(num_messages)
+                with col2:
+                    st.header("Total Words")
+                    st.title(words)
+                with col3:
+                    st.header("Media Shared")
+                    st.title(num_media)
+                with col4:
+                    st.header("Links Shared")
+                    st.title(num_links)
 
-            # Monthly timeline
-            st.title("Monthly Timeline")
-            timeline = helper.monthly_timeline(selected_user, df_filtered)
-            if not timeline.empty:
-                fig, ax = plt.subplots()
-                sns.lineplot(data=timeline, x='time', y='message', ax=ax, color='green')
-                ax.set_title("Monthly Timeline")
-                ax.set_xlabel("Time")
-                ax.set_ylabel("Messages")
-                plt.xticks(rotation='vertical')
-                st.pyplot(fig)
-            else:
-                st.warning("No data available for the monthly timeline.")
+                st.title("Monthly Timeline")
+                timeline = helper.monthly_timeline(selected_user, df_filtered.sample(min(5000, len(df_filtered))))
+                if not timeline.empty:
+                    plt.figure(figsize=(10, 5))
+                    sns.lineplot(data=timeline, x='time', y='message', color='green')
+                    plt.title("Monthly Timeline")
+                    plt.xlabel("Date")
+                    plt.ylabel("Messages")
+                    st.pyplot(plt)
+                    plt.clf()
 
-            # Daily timeline
-            st.title("Daily Timeline")
-            daily_timeline = helper.daily_timeline(selected_user, df_filtered)
-            if not daily_timeline.empty:
-                fig, ax = plt.subplots()
-                sns.lineplot(data=daily_timeline, x='date', y='message', ax=ax, color='black')
-                ax.set_title("Daily Timeline")
-                ax.set_xlabel("Date")
-                ax.set_ylabel("Messages")
-                plt.xticks(rotation='vertical')
-                st.pyplot(fig)
-            else:
-                st.warning("No data available for the daily timeline.")
+                st.title("Daily Timeline")
+                daily_timeline = helper.daily_timeline(selected_user, df_filtered.sample(min(5000, len(df_filtered))))
+                if not daily_timeline.empty:
+                    plt.figure(figsize=(10, 5))
+                    sns.lineplot(data=daily_timeline, x='date', y='message', color='black')
+                    plt.title("Daily Timeline")
+                    plt.xlabel("Date")
+                    plt.ylabel("Messages")
+                    st.pyplot(plt)
+                    plt.clf()
 
-            # Activity map
-            st.title('Activity Map')
-            col1, col2 = st.columns(2)
+                st.title("Activity Map")
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.header("Most Busy Day")
+                    busy_day = helper.week_activity_map(selected_user, df_filtered)
+                    if not busy_day.empty:
+                        plt.figure(figsize=(10, 5))
+                        sns.barplot(x=busy_day.index, y=busy_day.values, palette="Purples_r")
+                        plt.title("Most Busy Day")
+                        plt.xlabel("Day of Week")
+                        plt.ylabel("Message Count")
+                        st.pyplot(plt)
+                        plt.clf()
+                with col2:
+                    st.header("Most Busy Month")
+                    busy_month = helper.month_activity_map(selected_user, df_filtered)
+                    if not busy_month.empty:
+                        plt.figure(figsize=(10, 5))
+                        sns.barplot(x=busy_month.index, y=busy_month.values, palette="Oranges_r")
+                        plt.title("Most Busy Month")
+                        plt.xlabel("Month")
+                        plt.ylabel("Message Count")
+                        st.pyplot(plt)
+                        plt.clf()
 
-            with col1:
-                st.header("Most Busy Day")
-                busy_day = helper.week_activity_map(selected_user, df_filtered)
-                if not busy_day.empty:
-                    fig, ax = plt.subplots()
-                    sns.barplot(x=busy_day.index, y=busy_day.values, ax=ax, color='purple')
-                    ax.set_title("Most Busy Day")
+                if selected_user == 'Overall':
+                    st.title("Most Busy Users")
+                    x, new_df = helper.most_busy_users(df_filtered)
+                    if not x.empty:
+                        plt.figure(figsize=(10, 5))
+                        sns.barplot(x=x.index, y=x.values, palette="Reds_r")
+                        plt.title("Most Busy Users")
+                        plt.xlabel("User")
+                        plt.ylabel("Message Count")
+                        plt.xticks(rotation=45)
+                        st.pyplot(plt)
+                        st.title("Word Count by User")
+                        plt.clf()
+                        st.dataframe(new_df)
+                
+                # Most common words analysis
+                st.title("Most Common Words")
+                most_common_df = helper.most_common_words(selected_user, df_filtered)
+                if not most_common_df.empty:
+                    fig, ax = plt.subplots(figsize=(10, 6))
+                    sns.barplot(y=most_common_df[0], x=most_common_df[1], ax=ax, palette="Blues_r")
+                    ax.set_title("Top 20 Most Common Words")
+                    ax.set_xlabel("Frequency")
+                    ax.set_ylabel("Words")
                     plt.xticks(rotation='vertical')
                     st.pyplot(fig)
+                    plt.clf()
                 else:
-                    st.warning("No data available for the most busy day.")
+                    st.warning("No data available for most common words.")
 
-            with col2:
-                st.header("Most Busy Month")
-                busy_month = helper.month_activity_map(selected_user, df_filtered)
-                if not busy_month.empty:
-                    fig, ax = plt.subplots()
-                    sns.barplot(x=busy_month.index, y=busy_month.values, ax=ax, color='orange')
-                    ax.set_title("Most Busy Month")
-                    plt.xticks(rotation='vertical')
-                    st.pyplot(fig)
-                else:
-                    st.warning("No data available for the most busy month.")
-
-            # Finding the busiest users in the group (Group level)
-            if selected_user == 'Overall':
-                st.title('Most Busy Users')
-                x, new_df = helper.most_busy_users(df_filtered)
-                if not x.empty:
-                    fig, ax = plt.subplots()
+                # Emoji analysis
+                st.title("Emoji Analysis")
+                emoji_df = helper.emoji_helper(selected_user, df_filtered)
+                if not emoji_df.empty:
                     col1, col2 = st.columns(2)
 
                     with col1:
-                        sns.barplot(x=x.index, y=x.values, ax=ax, color='red')
-                        ax.set_title("Most Busy Users")
-                        plt.xticks(rotation='vertical')
-                        st.pyplot(fig)
+                        st.subheader("Top Emojis Used")
+                        st.dataframe(emoji_df)
+                    
                     with col2:
-                        st.dataframe(new_df)
+                        fig, ax = plt.subplots(figsize=(8, 8))
+                        ax.pie(emoji_df[1].head(), labels=emoji_df[0].head(), 
+                              autopct="%0.2f%%", startangle=90,
+                              colors=sns.color_palette("pastel"))
+                        ax.set_title("Top Emoji Distribution")
+                        st.pyplot(fig)
+                        plt.clf()
                 else:
-                    st.warning("No data available for most busy users.")
+                    st.warning("No data available for emoji analysis.")
+                
+                # Sentiment Analysis Visualizations
+                st.title("📈 Sentiment Analysis")
+                
+                # Convert month names to abbreviated format
+                month_map = {
+                    'January': 'Jan', 'February': 'Feb', 'March': 'Mar', 'April': 'Apr',
+                    'May': 'May', 'June': 'Jun', 'July': 'Jul', 'August': 'Aug',
+                    'September': 'Sep', 'October': 'Oct', 'November': 'Nov', 'December': 'Dec'
+                }
+                df_filtered['month'] = df_filtered['month'].map(month_map)
 
-            # WordCloud
-            show_wordcloud = st.checkbox("Show Wordcloud")
-            if show_wordcloud:
-                st.title("Wordcloud")
-                df_wc = helper.create_wordcloud(selected_user, df_filtered)
-                if df_wc is not None:
-                    fig, ax = plt.subplots()
-                    ax.imshow(df_wc)
-                    ax.axis("off")
-                    st.pyplot(fig)
-                else:
-                    st.warning("No data available for the word cloud.")
+                # Group by month and sentiment
+                monthly_sentiment = df_filtered.groupby(['month', 'sentiment']).size().unstack(fill_value=0)
 
-            # Most common words
-            most_common_df = helper.most_common_words(selected_user, df_filtered)
-            if not most_common_df.empty:
-                fig, ax = plt.subplots()
-                sns.barplot(y=most_common_df[0], x=most_common_df[1], ax=ax)
-                ax.set_title("Most Common Words")
-                plt.xticks(rotation='vertical')
+                # Plotting: Histogram (Bar Chart) for each sentiment
+                st.write("### Sentiment Count by Month (Histogram)")
+
+                # Create a figure with subplots for each sentiment
+                fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+
+                # Plot Positive Sentiment
+                if 'positive' in monthly_sentiment:
+                    axes[0].bar(monthly_sentiment.index, monthly_sentiment['positive'], color='green')
+                axes[0].set_title('Positive Sentiment')
+                axes[0].set_xlabel('Month')
+                axes[0].set_ylabel('Count')
+
+                # Plot Neutral Sentiment
+                if 'neutral' in monthly_sentiment:
+                    axes[1].bar(monthly_sentiment.index, monthly_sentiment['neutral'], color='blue')
+                axes[1].set_title('Neutral Sentiment')
+                axes[1].set_xlabel('Month')
+                axes[1].set_ylabel('Count')
+
+                # Plot Negative Sentiment
+                if 'negative' in monthly_sentiment:
+                    axes[2].bar(monthly_sentiment.index, monthly_sentiment['negative'], color='red')
+                axes[2].set_title('Negative Sentiment')
+                axes[2].set_xlabel('Month')
+                axes[2].set_ylabel('Count')
+
+                # Display the plots in Streamlit
                 st.pyplot(fig)
-            else:
-                st.warning("No data available for most common words.")
+                plt.clf()
 
-            # Emoji analysis
-            emoji_df = helper.emoji_helper(selected_user, df_filtered)
-            if not emoji_df.empty:
-                st.title("Emoji Analysis")
-                col1, col2 = st.columns(2)
+                # Count sentiments per day of the week
+                sentiment_counts = df_filtered.groupby(['day_of_week', 'sentiment']).size().unstack(fill_value=0)
 
-                with col1:
-                    st.dataframe(emoji_df)
-                with col2:
-                    fig, ax = plt.subplots()
-                    ax.pie(emoji_df[1].head(), labels=emoji_df[0].head(), autopct="%0.2f")
-                    ax.set_title("Emoji Distribution")
+                # Sort days correctly
+                day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+                sentiment_counts = sentiment_counts.reindex(day_order)
+
+                # Daily Sentiment Analysis
+                st.write("### Daily Sentiment Analysis")
+
+                # Create a Matplotlib figure
+                fig, ax = plt.subplots(figsize=(10, 5))
+                sentiment_counts.plot(kind='bar', stacked=False, ax=ax, color=['red', 'blue', 'green'])
+
+                # Customize the plot
+                ax.set_xlabel("Day of the Week")
+                ax.set_ylabel("Count")
+                ax.set_title("Sentiment Distribution per Day of the Week")
+                ax.legend(title="Sentiment")
+
+                # Display the plot in Streamlit
+                st.pyplot(fig)
+                plt.clf()
+
+                # Count messages per user per sentiment (only for Overall view)
+                if selected_user == 'Overall':
+                    sentiment_counts = df_filtered.groupby(['user', 'sentiment']).size().reset_index(name='Count')
+
+                    # Calculate total messages per sentiment
+                    total_per_sentiment = df_filtered['sentiment'].value_counts().to_dict()
+
+                    # Add percentage column
+                    sentiment_counts['Percentage'] = sentiment_counts.apply(
+                        lambda row: (row['Count'] / total_per_sentiment[row['sentiment']]) * 100, axis=1
+                    )
+
+                    # Separate tables for each sentiment
+                    positive_df = sentiment_counts[sentiment_counts['sentiment'] == 'positive'].sort_values(by='Count', ascending=False).head(10)
+                    neutral_df = sentiment_counts[sentiment_counts['sentiment'] == 'neutral'].sort_values(by='Count', ascending=False).head(10)
+                    negative_df = sentiment_counts[sentiment_counts['sentiment'] == 'negative'].sort_values(by='Count', ascending=False).head(10)
+
+                    # Sentiment Contribution Analysis
+                    st.write("### Sentiment Contribution by User")
+
+                    # Create three columns for side-by-side display
+                    col1, col2, col3 = st.columns(3)
+
+                    # Display Positive Table
+                    with col1:
+                        st.subheader("Top Positive Contributors")
+                        if not positive_df.empty:
+                            st.dataframe(positive_df[['user', 'Count', 'Percentage']])
+                        else:
+                            st.warning("No positive sentiment data")
+
+                    # Display Neutral Table
+                    with col2:
+                        st.subheader("Top Neutral Contributors")
+                        if not neutral_df.empty:
+                            st.dataframe(neutral_df[['user', 'Count', 'Percentage']])
+                        else:
+                            st.warning("No neutral sentiment data")
+
+                    # Display Negative Table
+                    with col3:
+                        st.subheader("Top Negative Contributors")
+                        if not negative_df.empty:
+                            st.dataframe(negative_df[['user', 'Count', 'Percentage']])
+                        else:
+                            st.warning("No negative sentiment data")
+
+                             # Topic Analysis Section
+                st.title("🔍 Area of Focus: Topic Analysis")
+                
+                # Check if topic column exists, otherwise perform topic modeling
+                # if 'topic' not in df_filtered.columns:
+                #     with st.spinner("Performing topic modeling..."):
+                #         try:
+                #             # Add topic modeling here or ensure your helper functions handle it
+                #             df_filtered = helper.perform_topic_modeling(df_filtered)
+                #         except Exception as e:
+                #             st.error(f"Topic modeling failed: {str(e)}")
+                #             st.stop()
+                
+                # Plot Topic Distribution
+                st.header("Topic Distribution")
+                try:
+                    fig = helper.plot_topic_distribution(df_filtered)
                     st.pyplot(fig)
-            else:
-                st.warning("No data available for emoji analysis.")
+                    plt.clf()
+                except Exception as e:
+                    st.warning(f"Could not display topic distribution: {str(e)}")
 
-        # Convert month names to abbreviated format (e.g., "June" -> "Jun")
-        month_map = {
-            'January': 'Jan', 'February': 'Feb', 'March': 'Mar', 'April': 'Apr',
-            'May': 'May', 'June': 'Jun', 'July': 'Jul', 'August': 'Aug',
-            'September': 'Sep', 'October': 'Oct', 'November': 'Nov', 'December': 'Dec'
-        }
-        df['month'] = df['month'].map(month_map)
+                # Display Sample Messages for Each Topic
+                st.header("Sample Messages for Each Topic")
+                if 'topic' in df_filtered.columns:
+                    for topic_id in sorted(df_filtered['topic'].unique()):
+                        st.subheader(f"Topic {topic_id}")
+                        
+                        # Get messages for the current topic
+                        filtered_messages = df_filtered[df_filtered['topic'] == topic_id]['message']
+                        
+                        # Determine sample size
+                        sample_size = min(5, len(filtered_messages))
+                        
+                        if sample_size > 0:
+                            sample_messages = filtered_messages.sample(sample_size, replace=False).tolist()
+                            for msg in sample_messages:
+                                st.write(f"- {msg}")
+                        else:
+                            st.write("No messages available for this topic.")
+                else:
+                    st.warning("Topic information not available")
 
-        # Group by month and sentiment
-        monthly_sentiment = df.groupby(['month', 'sentiment']).size().unstack(fill_value=0)
+                # Topic Distribution Over Time
+                st.header("📅 Topic Trends Over Time")
+                
+                # Add time frequency selector
+                time_freq = st.selectbox("Select Time Frequency", ["Daily", "Weekly", "Monthly"], key='time_freq')
+                
+                # Plot topic trends
+                try:
+                    freq_map = {"Daily": "D", "Weekly": "W", "Monthly": "M"}
+                    topic_distribution = helper.topic_distribution_over_time(df_filtered, time_freq=freq_map[time_freq])
+                    
+                    # Choose between static and interactive plot
+                    use_plotly = st.checkbox("Use interactive visualization", value=True, key='use_plotly')
+                    
+                    if use_plotly:
+                        fig = helper.plot_topic_distribution_over_time_plotly(topic_distribution)
+                        st.plotly_chart(fig, use_container_width=True)
+                    else:
+                        fig = helper.plot_topic_distribution_over_time(topic_distribution)
+                        st.pyplot(fig)
+                        plt.clf()
+                except Exception as e:
+                    st.warning(f"Could not display topic trends: {str(e)}")
 
-        # Plotting: Histogram (Bar Chart) for each sentiment
-        st.write("### Sentiment Count by Month (Histogram)")
-
-        # Create a figure with subplots for each sentiment
-        fig, axes = plt.subplots(1, 3, figsize=(18, 5))
-
-        # Plot Positive Sentiment
-        axes[0].bar(monthly_sentiment.index, monthly_sentiment['positive'], color='green')
-        axes[0].set_title('Positive Sentiment')
-        axes[0].set_xlabel('Month')
-        axes[0].set_ylabel('Count')
-
-        # Plot Neutral Sentiment
-        axes[1].bar(monthly_sentiment.index, monthly_sentiment['neutral'], color='blue')
-        axes[1].set_title('Neutral Sentiment')
-        axes[1].set_xlabel('Month')
-        axes[1].set_ylabel('Count')
-
-        # Plot Negative Sentiment
-        axes[2].bar(monthly_sentiment.index, monthly_sentiment['negative'], color='red')
-        axes[2].set_title('Negative Sentiment')
-        axes[2].set_xlabel('Month')
-        axes[2].set_ylabel('Count')
-
-        # Display the plots in Streamlit
-        st.pyplot(fig)
-
-        # Count sentiments per day of the week
-        sentiment_counts = df.groupby(['day_of_week', 'sentiment']).size().unstack(fill_value=0)
-
-        # Sort days correctly
-        day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-        sentiment_counts = sentiment_counts.reindex(day_order)
-
-        # Streamlit App
-        st.title("Daily Sentiment Analysis")
-
-        # Create a Matplotlib figure
-        fig, ax = plt.subplots()
-        sentiment_counts.plot(kind='bar', stacked=False, ax=ax)
-
-        # Customize the plot
-        ax.set_xlabel("Day of the Week")
-        ax.set_ylabel("Count")
-        ax.set_title("Sentiment Distribution per Day of the Week")
-        ax.legend(title="Sentiment")
-
-        # Display the plot in Streamlit
-        st.pyplot(fig)
-
-        # Count messages per user per sentiment
-        sentiment_counts = df.groupby(['user', 'sentiment']).size().reset_index(name='Count')
-
-        # Calculate total messages per sentiment
-        total_per_sentiment = df['sentiment'].value_counts().to_dict()
-
-        # Add percentage column
-        sentiment_counts['Percentage'] = sentiment_counts.apply(
-            lambda row: (row['Count'] / total_per_sentiment[row['sentiment']]) * 100, axis=1
-        )
-
-        # Separate tables for each sentiment
-        positive_df = sentiment_counts[sentiment_counts['sentiment'] == 'positive'].sort_values(by='Count', ascending=False).head(10)
-        neutral_df = sentiment_counts[sentiment_counts['sentiment'] == 'neutral'].sort_values(by='Count', ascending=False).head(10)
-        negative_df = sentiment_counts[sentiment_counts['sentiment'] == 'negative'].sort_values(by='Count', ascending=False).head(10)
-
-        # Streamlit App
-        st.title("Sentiment Contribution Analysis")
-
-        # Create three columns for side-by-side display
-        col1, col2, col3 = st.columns(3)
-
-        # Display Positive Table
-        with col1:
-            st.subheader("Top Positive Contributors")
-            st.table(positive_df[['user', 'Count', 'Percentage']])
-
-        # Display Neutral Table
-        with col2:
-            st.subheader("Top Neutral Contributors")
-            st.table(neutral_df[['user', 'Count', 'Percentage']])
-
-        # Display Negative Table
-        with col3:
-            st.subheader("Top Negative Contributors")
-            st.table(negative_df[['user', 'Count', 'Percentage']])
-
-        # Get text for each sentiment
-        positive_text = " ".join(df[df['sentiment'] == 'positive']['message'])
-        neutral_text = " ".join(df[df['sentiment'] == 'neutral']['message'])
-        negative_text = " ".join(df[df['sentiment'] == 'negative']['message'])
-
-        # if len(topics) > 0:  # Check if topics is not empty
-        #     st.title("Topic Analysis")
-        #     fig = helper.plot_topics(topics)
-        #     st.pyplot(fig)
-        # else:
-        #     st.warning("No topics found for visualization.")
-
-        # Area of Focus: Topic Analysis
-        st.title("Area of Focus: Topic Analysis")
-
-        # Plot Topic Distribution
-        st.header("Topic Distribution")
-        fig = helper.plot_topic_distribution(df)
-        st.pyplot(fig)
-
-        # Display Top Words for Each Topic
-        # st.header("Top Words for Each Topic")
-        # for idx, topic in enumerate(topics):
-        #     st.subheader(f"Topic {idx}")
-        #     st.write(", ".join(topic))  # Display top 10 words for the topic
-
-        # Display Sample Messages for Each Topic
-        st.header("Sample Messages for Each Topic")
-        for topic_id in df['topic'].unique():
-            st.subheader(f"Topic {topic_id}")
-
-            # Get messages for the current topic
-            filtered_messages = df[df['topic'] == topic_id]['message']
-
-            # Determine sample size (no more than available messages)
-            sample_size = min(5, len(filtered_messages))
-
-            if sample_size > 0:
-                sample_messages = filtered_messages.sample(sample_size, replace=False).tolist()
-                for msg in sample_messages:
-                    st.write(f"- {msg}")
-            else:
-                st.write("No messages available for this topic.")
-
-        # Topic Distribution Over Time
-        st.title("What They Most Talk About")
-        st.header("Topic Distribution Over Time")
-
-        # Add a dropdown to select time frequency
-        time_freq = st.selectbox("Select Time Frequency", ["Daily", "Weekly", "Monthly"])
-
-        # Map selection to pandas frequency
-        freq_map = {"Daily": "D", "Weekly": "W", "Monthly": "M"}
-        topic_distribution = helper.topic_distribution_over_time(df, time_freq=freq_map[time_freq])
-
-        # Choose between Matplotlib and Plotly
-        use_plotly = st.checkbox("Use Interactive Plot (Plotly)")
-
-        if use_plotly:
-            fig = helper.plot_topic_distribution_over_time_plotly(topic_distribution)
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            fig = helper.plot_topic_distribution_over_time(topic_distribution)
-            st.pyplot(fig)
-
-        # Number of clusters input
-        n_clusters = st.slider("Select Number of Clusters", min_value=2, max_value=10, value=5)
-
-        # Perform clustering
-        df, reduced_features, _ = preprocessor.preprocess_for_clustering(df, n_clusters=n_clusters)
-
-        # Plot clusters
-        st.header("Cluster Visualization")
-        fig = helper.plot_clusters(reduced_features, df['cluster'])
-        st.pyplot(fig)
-
-        # Show insights for each cluster
-        st.header("Insights from Clusters")
-
-        # 1. Dominant Conversation Themes
-        st.subheader("1. Dominant Conversation Themes")
-        cluster_labels = helper.get_cluster_labels(df, n_clusters)  # Function to generate cluster labels
-        for cluster_id, label in cluster_labels.items():
-            st.write(f"**Cluster {cluster_id}**: {label}")
-        st.write("**Why it matters**: Helps users quickly identify the main interests or priorities of the group without reading thousands of messages.")
-
-        # 2. Temporal Topic Trends
-        st.subheader("2. Temporal Topic Trends")
-        temporal_trends = helper.get_temporal_trends(df)  # Function to analyze temporal trends
-        for cluster_id, trend in temporal_trends.items():
-            st.write(f"**Cluster {cluster_id}**: Most messages occur on {trend['peak_day']} at {trend['peak_time']}.")
-        st.write("**Why it matters**: Reveals when specific topics trend, helping users optimize posting times or understand group rhythms.")
-
-        # 3. User-Specific Contributions
-        st.subheader("3. User-Specific Contributions")
-        user_contributions = helper.get_user_contributions(df)  # Function to analyze user contributions
-        for cluster_id, users in user_contributions.items():
-            st.write(f"**Cluster {cluster_id}**: Top contributors are {', '.join(users)}.")
-        st.write("**Why it matters**: Highlights individual roles and expertise within the group, useful for team management or moderation.")
-
-        # 4. Sentiment by Topic
-        st.subheader("4. Sentiment by Topic")
-        sentiment_by_cluster = helper.get_sentiment_by_cluster(df)  # Function to analyze sentiment
-        for cluster_id, sentiment in sentiment_by_cluster.items():
-            st.write(f"**Cluster {cluster_id}**: {sentiment['positive']}% positive, {sentiment['neutral']}% neutral, {sentiment['negative']}% negative.")
-        st.write("**Why it matters**: Flags problem areas or success stories tied to specific topics for targeted action.")
-
-        # 5. Anomaly Detection
-        st.subheader("5. Anomaly Detection")
-        anomalies = helper.detect_anomalies(df)  # Function to detect anomalies
-        for cluster_id, anomaly in anomalies.items():
-            st.write(f"**Cluster {cluster_id}**: {anomaly}.")
-        st.write("**Why it matters**: Identifies unusual patterns like spam, off-topic discussions, or critical resource sharing.")
-
-        # 6. Actionable Recommendations
-        st.subheader("6. Actionable Recommendations")
-        recommendations = helper.generate_recommendations(df)  # Function to generate recommendations
-        for recommendation in recommendations:
-            st.write(f"- {recommendation}")
-
-        # Show sample messages from each cluster
-        st.header("Sample Messages from Each Cluster")
-        for cluster_id in sorted(df['cluster'].unique()):
-            st.subheader(f"Cluster {cluster_id}")
-            cluster_messages = df[df['cluster'] == cluster_id]['message']
-            sample_size = min(3, len(cluster_messages))  # Ensure sample size <= available messages
-            if sample_size > 0:
-                sample_messages = cluster_messages.sample(sample_size, replace=False).tolist()
-                for msg in sample_messages:
-                    st.write(f"- {msg}")
-            else:
-                st.write("No messages available for this cluster.")
+                # Clustering Analysis Section
+                st.title("🧩 Conversation Clusters")
+                
+                # Number of clusters input
+                n_clusters = st.slider("Select number of clusters", 
+                                       min_value=2, 
+                                       max_value=10, 
+                                       value=5,
+                                       key='n_clusters')
+                
+                # Perform clustering
+                with st.spinner("Analyzing conversation clusters..."):
+                    try:
+                        df_clustered, reduced_features, _ = preprocessor.preprocess_for_clustering(df_filtered, n_clusters=n_clusters)
+                        
+                        # Plot clusters
+                        st.header("Cluster Visualization")
+                        fig = helper.plot_clusters(reduced_features, df_clustered['cluster'])
+                        st.pyplot(fig)
+                        plt.clf()
+                        
+                        # Cluster Insights
+                        st.header("📌 Cluster Insights")
+                        
+                        # 1. Dominant Conversation Themes
+                        st.subheader("1. Dominant Themes")
+                        cluster_labels = helper.get_cluster_labels(df_clustered, n_clusters)
+                        for cluster_id, label in cluster_labels.items():
+                            st.write(f"**Cluster {cluster_id}**: {label}")
+                        
+                        # 2. Temporal Patterns
+                        st.subheader("2. Temporal Patterns")
+                        temporal_trends = helper.get_temporal_trends(df_clustered)
+                        for cluster_id, trend in temporal_trends.items():
+                            st.write(f"**Cluster {cluster_id}**: Peaks on {trend['peak_day']} around {trend['peak_time']}")
+                        
+                        # 3. User Contributions
+                        if selected_user == 'Overall':
+                            st.subheader("3. Top Contributors")
+                            user_contributions = helper.get_user_contributions(df_clustered)
+                            for cluster_id, users in user_contributions.items():
+                                st.write(f"**Cluster {cluster_id}**: {', '.join(users[:3])}...")
+                        
+                        # 4. Sentiment by Cluster
+                        st.subheader("4. Sentiment Analysis")
+                        sentiment_by_cluster = helper.get_sentiment_by_cluster(df_clustered)
+                        for cluster_id, sentiment in sentiment_by_cluster.items():
+                            st.write(f"**Cluster {cluster_id}**: {sentiment['positive']}% positive, {sentiment['neutral']}% neutral, {sentiment['negative']}% negative")
+                        
+                        # Sample messages from each cluster
+                        st.subheader("Sample Messages")
+                        for cluster_id in sorted(df_clustered['cluster'].unique()):
+                            with st.expander(f"Cluster {cluster_id} Messages"):
+                                cluster_msgs = df_clustered[df_clustered['cluster'] == cluster_id]['message']
+                                sample_size = min(3, len(cluster_msgs))
+                                if sample_size > 0:
+                                    for msg in cluster_msgs.sample(sample_size, replace=False):
+                                        st.write(f"- {msg}")
+                                else:
+                                    st.write("No messages available")
+                        
+                    except Exception as e:
+                        st.error(f"Clustering failed: {str(e)}")

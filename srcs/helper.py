@@ -3,65 +3,92 @@ from wordcloud import WordCloud
 import pandas as pd
 from collections import Counter
 import emoji
+import plotly.express as px
 import matplotlib.pyplot as plt
 import seaborn as sns
-from collections import Counter
-import plotly.express as px
-
 
 extract = URLExtract()
 
-def fetch_stats(selected_user,df):
-
+def fetch_stats(selected_user, df):
     if selected_user != 'Overall':
         df = df[df['user'] == selected_user]
-
-    # fetch the number of messages
     num_messages = df.shape[0]
-
-    # fetch the total number of words
-    words = []
-    for message in df['message']:
-        words.extend(message.split())
-
-    # fetch number of media messages
+    words = sum(len(msg.split()) for msg in df['message'])
     num_media_messages = df[df['unfiltered_messages'] == '<media omitted>\n'].shape[0]
-
-    # fetch number of links shared
-    links = []
-    for message in df['unfiltered_messages']:
-        links.extend(extract.find_urls(message))
-
-    return num_messages,len(words),num_media_messages,len(links)
+    links = sum(len(extract.find_urls(msg)) for msg in df['unfiltered_messages'])
+    return num_messages, words, num_media_messages, links
 
 def most_busy_users(df):
     x = df['user'].value_counts().head()
     df = round((df['user'].value_counts() / df.shape[0]) * 100, 2).reset_index().rename(
         columns={'index': 'percentage', 'user': 'Name'})
-    return x,df
+    return x, df
 
 def create_wordcloud(selected_user, df):
-    # f = open('stop_hinglish.txt', 'r')
-    stop_words = df
-
     if selected_user != 'Overall':
         df = df[df['user'] == selected_user]
-
     temp = df[df['user'] != 'group_notification']
     temp = temp[~temp['message'].str.lower().str.contains('<media omitted>')]
-
-    def remove_stop_words(message):
-        y = []
-        for word in message.lower().split():
-            if word not in stop_words:
-                y.append(word)
-        return " ".join(y)
-
     wc = WordCloud(width=500, height=500, min_font_size=10, background_color='white')
-    temp['message'] = temp['message'].apply(remove_stop_words)
     df_wc = wc.generate(temp['message'].str.cat(sep=" "))
     return df_wc
 
+def most_common_words(selected_user, df):
+    if selected_user != 'Overall':
+        df = df[df['user'] == selected_user]
+    temp = df[df['user'] != 'group_notification']
+    temp = temp[~temp['message'].str.lower().str.contains('<media omitted>')]
+    words = [word for msg in temp['message'] for word in msg.lower().split()]
+    return pd.DataFrame(Counter(words).most_common(20))
+
+def emoji_helper(selected_user, df):
+    if selected_user != 'Overall':
+        df = df[df['user'] == selected_user]
+    emojis = [c for msg in df['unfiltered_messages'] for c in msg if c in emoji.EMOJI_DATA]
+    return pd.DataFrame(Counter(emojis).most_common(len(Counter(emojis))))
+
+def monthly_timeline(selected_user, df):
+    if selected_user != 'Overall':
+        df = df[df['user'] == selected_user]
+    timeline = df.groupby(['year', 'month']).count()['message'].reset_index()
+    timeline['time'] = timeline['month'] + "-" + timeline['year'].astype(str)
+    return timeline
+
+def daily_timeline(selected_user, df):
+    if selected_user != 'Overall':
+        df = df[df['user'] == selected_user]
+    return df.groupby('date').count()['message'].reset_index()
+
+def week_activity_map(selected_user, df):
+    if selected_user != 'Overall':
+        df = df[df['user'] == selected_user]
+    return df['day_of_week'].value_counts()
+
+def month_activity_map(selected_user, df):
+    if selected_user != 'Overall':
+        df = df[df['user'] == selected_user]
+    return df['month'].value_counts()
+
+def plot_topic_distribution(df):
+    topic_counts = df['topic'].value_counts().sort_index()
+    fig = px.bar(x=topic_counts.index, y=topic_counts.values, title="Topic Distribution", color_discrete_sequence=['viridis'])
+    return fig
+
+def topic_distribution_over_time(df, time_freq='M'):
+    df['time_period'] = df['date'].dt.to_period(time_freq)
+    return df.groupby(['time_period', 'topic']).size().unstack(fill_value=0)
+
+def plot_topic_distribution_over_time_plotly(topic_distribution):
+    topic_distribution = topic_distribution.reset_index()
+    topic_distribution['time_period'] = topic_distribution['time_period'].dt.to_timestamp()
+    topic_distribution = topic_distribution.melt(id_vars='time_period', var_name='topic', value_name='count')
+    fig = px.line(topic_distribution, x='time_period', y='count', color='topic', title="Topic Distribution Over Time")
+    fig.update_layout(legend_title_text='Topics', xaxis_tickangle=-45)
+    return fig
+
+def plot_clusters(reduced_features, clusters):
+    fig = px.scatter(x=reduced_features[:, 0], y=reduced_features[:, 1], color=clusters, title="Message Clusters (t-SNE)")
+    return fig
 def most_common_words(selected_user, df):
     # f = open('stop_hinglish.txt','r')
     stop_words = df
@@ -93,83 +120,6 @@ def emoji_helper(selected_user, df):
     emoji_df = pd.DataFrame(Counter(emojis).most_common(len(Counter(emojis))))
 
     return emoji_df
-
-
-def monthly_timeline(selected_user,df):
-
-    if selected_user != 'Overall':
-        df = df[df['user'] == selected_user]
-
-    timeline = df.groupby(['year','month']).count()['message'].reset_index()
-
-    time = []
-    for i in range(timeline.shape[0]):
-        time.append(timeline['month'][i] + "-" + str(timeline['year'][i]))
-
-    timeline['time'] = time
-
-    return timeline
-
-def daily_timeline(selected_user,df):
-
-    if selected_user != 'Overall':
-        df = df[df['user'] == selected_user]
-
-    daily_timeline = df.groupby('date').count()['message'].reset_index()
-
-    return daily_timeline
-
-def week_activity_map(selected_user,df):
-
-    if selected_user != 'Overall':
-        df = df[df['user'] == selected_user]
-
-    return df['day'].value_counts()
-
-def month_activity_map(selected_user,df):
-
-    if selected_user != 'Overall':
-        df = df[df['user'] == selected_user]
-
-    return df['month'].value_counts()
-
-def activity_heatmap(selected_user,df):
-
-    if selected_user != 'Overall':
-        df = df[df['user'] == selected_user]
-
-    user_heatmap = df.pivot_table(index='day', columns='period', values='message', aggfunc='count').fillna(0)
-
-    return user_heatmap
-def generate_wordcloud(text, color):
-    wordcloud = WordCloud(width=400, height=300, background_color=color, colormap="viridis").generate(text)
-    return wordcloud
-
-# def plot_topics(topics):
-#     """
-#     Plots a bar chart for the top words in each topic.
-#     """
-#     if not topics or not isinstance(topics[0], list):
-#         raise ValueError("topics must be a list of lists of words.")
-
-#     print("Topics received:", topics)  # Debugging
-#     fig, axes = plt.subplots(1, len(topics), figsize=(20, 10))
-#     if len(topics) == 1:
-#         axes = [axes]  # Ensure axes is iterable for single topic
-
-#     for idx, topic in enumerate(topics):
-#         if not isinstance(topic, list):
-#             raise ValueError(f"Topic {idx} is not a list of words.")
-
-#         top_words = topic
-#         print(f"Top words for Topic {idx}: {top_words}")  # Debugging
-#         axes[idx].barh(top_words, range(len(top_words)))
-#         axes[idx].set_title(f"Topic {idx}")
-#         axes[idx].set_xlabel("Word Importance")
-#         axes[idx].set_ylabel("Top Words")
-
-#     plt.tight_layout()
-#     return fig
 def plot_topic_distribution(df):
     """
     Plots the distribution of topics in the chat data.
